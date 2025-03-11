@@ -62,20 +62,19 @@ public class VideoProcessingController {
     private byte[] extractAudio(File videoFile) throws IOException, InterruptedException {
         // Create a temporary file to store the extracted audio
         File tempAudio = File.createTempFile("extracted_audio", ".mp3");
-        tempAudio.deleteOnExit(); // Ensure the temp file is deleted when the JVM exits
-
-        // Set up the FFmpeg process to extract the audio with the -y flag (force
-        // overwrite)
+        tempAudio.deleteOnExit();  // Ensure the temp file is deleted when the JVM exits
+        
+        // Set up the FFmpeg process to extract the audio with the -y flag (force overwrite)
         ProcessBuilder builder = new ProcessBuilder(
-                "ffmpeg",
-                "-y", // Automatically overwrite existing files
-                "-i", videoFile.getAbsolutePath(), // Input video file
-                "-q:a", "0", // Highest audio quality
-                "-map", "a", // Extract audio only
-                tempAudio.getAbsolutePath() // Output audio file
+                "ffmpeg", 
+                "-y",                            // Automatically overwrite existing files
+                "-i", videoFile.getAbsolutePath(),  // Input video file
+                "-q:a", "0",                        // Highest audio quality
+                "-map", "a",                        // Extract audio only
+                tempAudio.getAbsolutePath()         // Output audio file
         );
 
-        builder.redirectErrorStream(true); // Merge stdout and stderr
+        builder.redirectErrorStream(true);  // Merge stdout and stderr
         Process process = builder.start();
 
         // Optionally: log the process output
@@ -92,7 +91,7 @@ public class VideoProcessingController {
         if (!process.waitFor(30, TimeUnit.SECONDS)) {
             throw new IOException("FFmpeg process timed out");
         }
-
+        
         // Check for errors in the process (non-zero exit value means failure)
         if (process.exitValue() != 0) {
             throw new IOException("FFmpeg process failed with exit code " + process.exitValue());
@@ -100,11 +99,10 @@ public class VideoProcessingController {
 
         // Read the audio file into a byte array
         byte[] audioBytes = Files.readAllBytes(tempAudio.toPath());
-
-        // The temp file is automatically deleted on exit, but we can explicitly delete
-        // it now if needed
+        
+        // The temp file is automatically deleted on exit, but we can explicitly delete it now if needed
         tempAudio.delete();
-
+        
         return audioBytes;
     }
 
