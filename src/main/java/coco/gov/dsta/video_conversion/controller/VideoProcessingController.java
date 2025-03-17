@@ -6,10 +6,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.MediaType;
-import org.springframework.http.HttpEntity;
-import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import javax.imageio.ImageIO;
@@ -62,19 +60,20 @@ public class VideoProcessingController {
     private byte[] extractAudio(File videoFile) throws IOException, InterruptedException {
         // Create a temporary file to store the extracted audio
         File tempAudio = File.createTempFile("extracted_audio", ".mp3");
-        tempAudio.deleteOnExit();  // Ensure the temp file is deleted when the JVM exits
-        
-        // Set up the FFmpeg process to extract the audio with the -y flag (force overwrite)
+        tempAudio.deleteOnExit(); // Ensure the temp file is deleted when the JVM exits
+
+        // Set up the FFmpeg process to extract the audio with the -y flag (force
+        // overwrite)
         ProcessBuilder builder = new ProcessBuilder(
-                "ffmpeg", 
-                "-y",                            // Automatically overwrite existing files
-                "-i", videoFile.getAbsolutePath(),  // Input video file
-                "-q:a", "0",                        // Highest audio quality
-                "-map", "a",                        // Extract audio only
-                tempAudio.getAbsolutePath()         // Output audio file
+                "ffmpeg",
+                "-y", // Automatically overwrite existing files
+                "-i", videoFile.getAbsolutePath(), // Input video file
+                "-q:a", "0", // Highest audio quality
+                "-map", "a", // Extract audio only
+                tempAudio.getAbsolutePath() // Output audio file
         );
 
-        builder.redirectErrorStream(true);  // Merge stdout and stderr
+        builder.redirectErrorStream(true); // Merge stdout and stderr
         Process process = builder.start();
 
         // Optionally: log the process output
@@ -91,7 +90,7 @@ public class VideoProcessingController {
         if (!process.waitFor(30, TimeUnit.SECONDS)) {
             throw new IOException("FFmpeg process timed out");
         }
-        
+
         // Check for errors in the process (non-zero exit value means failure)
         if (process.exitValue() != 0) {
             throw new IOException("FFmpeg process failed with exit code " + process.exitValue());
@@ -99,10 +98,11 @@ public class VideoProcessingController {
 
         // Read the audio file into a byte array
         byte[] audioBytes = Files.readAllBytes(tempAudio.toPath());
-        
-        // The temp file is automatically deleted on exit, but we can explicitly delete it now if needed
+
+        // The temp file is automatically deleted on exit, but we can explicitly delete
+        // it now if needed
         tempAudio.delete();
-        
+
         return audioBytes;
     }
 
@@ -142,7 +142,7 @@ public class VideoProcessingController {
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("video", new ByteArrayResource(audioData) {
+        body.add("audio", new ByteArrayResource(audioData) {
             @Override
             public String getFilename() {
                 return "audio.mp3";
@@ -155,25 +155,27 @@ public class VideoProcessingController {
             e.printStackTrace(); // Handle the error properly in production
         }
 
+        // Convert images to Base64 and send as an array
+        List<String> base64Images = new ArrayList<>();
         for (int i = 0; i < frames.size(); i++) {
-            final byte[] frameData = frames.get(i);
-            final int frameIndex = i + 1;
-
+            byte[] frameData = frames.get(i);
             try {
-                saveByteArrayToFile(frameData, "frame" + frameIndex + ".png");
+                saveByteArrayToFile(frameData, "frame" + (i + 1) + ".png");
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
-            body.add("image" + frameIndex, new ByteArrayResource(frameData) {
-                @Override
-                public String getFilename() {
-                    return "frame" + frameIndex + ".png";
-                }
-            });
+            base64Images.add(Base64.getEncoder().encodeToString(frameData)); // Use Java Base64 encoder
         }
+        // Add metadata
+        body.add("workspaceId", workspaceId);
+        body.add("userId", userId);
+        body.add("createdAt", createdAt);
+
+        body.add("images", base64Images); // Send as an array of Base64 strings
 
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
-        restTemplate.postForEntity(TARGET_URL, requestEntity, String.class);
+
+        ResponseEntity<String> response = restTemplate.postForEntity(TARGET_URL, requestEntity, String.class);
+        System.out.println("Response from Target API: " + response.getBody());
     }
 }
